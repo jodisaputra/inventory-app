@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -14,34 +14,115 @@ const page = usePage();
 // Track active submenu
 const activeSubmenu = ref(null);
 
+// Define menu structure with routes
+const menuStructure = {
+    users: {
+        name: 'Users',
+        icon: `<svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              </svg>`,
+        submenu: {
+            'users.index': { name: 'All Users', route: 'users.index' },
+            'users.create': { name: 'Add New', route: 'users.create' }
+        }
+    },
+    reports: {
+        name: 'Reports',
+        icon: `<svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+              </svg>`,
+        submenu: {
+            'reports.sales': { name: 'Sales Report', route: '' },
+            'reports.users': { name: 'User Activity', route: '' },
+            'reports.analytics': { name: 'Analytics', route: '' }
+        }
+    }
+};
+
+// Computed property to check if a parent menu should be active
+const isParentActive = (menuKey) => {
+    const currentRoute = route().current();
+
+    // First check if the current route starts with the parent key
+    if (currentRoute.startsWith(menuKey)) return true;
+
+    // Then check if any submenu route is active
+    const submenuRoutes = Object.values(menuStructure[menuKey].submenu).map(item => item.route);
+    return submenuRoutes.some(routeName => route().current(routeName));
+};
+
+// Computed property to check if a specific submenu item is active
+const isSubmenuItemActive = (routeName) => {
+    return route().current(routeName);
+};
+
+// Toggle sidebar
 const toggleSidebar = () => {
     sidebarOpen.value = !sidebarOpen.value;
     // Save preference to localStorage
     localStorage.setItem('sidebarOpen', sidebarOpen.value);
+    // On mobile, also save a specific mobile setting
+    if (window.innerWidth < 768) {
+        localStorage.setItem('sidebarOpenMobile', sidebarOpen.value);
+    }
 };
 
+// Toggle submenu with smart detection
 const toggleSubmenu = (menu) => {
-    activeSubmenu.value = activeSubmenu.value === menu ? null : menu;
+    if (activeSubmenu.value === menu) {
+        activeSubmenu.value = null;
+    } else {
+        activeSubmenu.value = menu;
+    }
+
+    // Save active submenu to localStorage
+    localStorage.setItem('activeSubmenu', activeSubmenu.value);
 };
 
 // Load sidebar state from localStorage on mount
 onMounted(() => {
+    // Load sidebar state
     const savedState = localStorage.getItem('sidebarOpen');
     if (savedState !== null) {
         sidebarOpen.value = savedState === 'true';
     }
 
+    // Load active submenu state
+    const savedSubmenu = localStorage.getItem('activeSubmenu');
+    if (savedSubmenu !== null) {
+        activeSubmenu.value = savedSubmenu;
+    }
+
+    // Auto-open submenu if a submenu route is active
+    const currentRoute = route().current();
+    for (const parentKey in menuStructure) {
+        // Check if any of this parent's submenu routes are active
+        const submenuItems = menuStructure[parentKey].submenu;
+        const isSubmenuActive = Object.values(submenuItems).some(item =>
+            route().current(item.route)
+        );
+
+        if (isSubmenuActive) {
+            activeSubmenu.value = parentKey;
+            break;
+        }
+    }
+
     // Handle smaller screens
     const handleResize = () => {
         if (window.innerWidth < 768) {
-            sidebarOpen.value = false;
+            // Only close automatically on initial load, not on every resize
+            // This allows users to open the sidebar on mobile if they want
+            if (localStorage.getItem('sidebarOpenMobile') === null) {
+                sidebarOpen.value = false;
+            }
         }
     };
 
     // Initial check
     handleResize();
 
-    // Add event listener
+    // Add event listener for major changes (like orientation)
     window.addEventListener('resize', handleResize);
 });
 </script>
@@ -202,8 +283,17 @@ onMounted(() => {
                     sidebarOpen ? 'translate-x-0' : '-translate-x-full']">
                     <!-- Logo and App Name -->
                     <div class="flex items-center justify-center py-6 border-b border-gray-700">
-                        <ApplicationLogo class="h-10 w-10 fill-current text-white" />
-                        <span class="ml-3 text-xl font-bold text-white">Your App</span>
+                        <!-- Custom App Logo - You can replace with your SVG logo -->
+                        <div class="flex items-center">
+                            <svg class="h-10 w-10 text-white" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M12 8L16 12M16 12L12 16M16 12H2M19 12C19 12.5523 19.4477 13 20 13C20.5523 13 21 12.5523 21 12C21 11.4477 20.5523 11 20 11C19.4477 11 19 11.4477 19 12Z"
+                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                    stroke-linejoin="round" />
+                            </svg>
+                            <span class="ml-3 text-xl font-bold text-white">Your App</span>
+                        </div>
                     </div>
 
                     <!-- Main Menu Header -->
@@ -226,77 +316,44 @@ onMounted(() => {
                             <span>Dashboard</span>
                             </Link>
 
-                            <!-- Users Menu with Submenu -->
-                            <div>
-                                <button @click="toggleSubmenu('users')"
-                                    class="flex items-center justify-between w-full px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white">
-                                    <div class="flex items-center">
-                                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                            <!-- Dynamic Menu Items with Submenus -->
+                            <template v-for="(menuItem, menuKey) in menuStructure" :key="menuKey">
+                                <div>
+                                    <!-- Parent Menu Item -->
+                                    <button @click="toggleSubmenu(menuKey)"
+                                        class="flex items-center justify-between w-full px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white"
+                                        :class="{ 'bg-gray-700 text-white': isParentActive(menuKey) || activeSubmenu === menuKey }">
+                                        <div class="flex items-center">
+                                            <!-- Use v-html for SVG icon -->
+                                            <span v-html="menuItem.icon"></span>
+                                            <span>{{ menuItem.name }}</span>
+                                        </div>
+                                        <svg class="w-4 h-4 transition-transform duration-200"
+                                            :class="{ 'rotate-180': activeSubmenu === menuKey }" fill="none"
+                                            stroke="currentColor" viewBox="0 0 24 24"
                                             xmlns="http://www.w3.org/2000/svg">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+                                                d="M19 9l-7 7-7-7">
                                             </path>
                                         </svg>
-                                        <span>Users</span>
+                                    </button>
+
+                                    <!-- Submenu Items -->
+                                    <div v-show="activeSubmenu === menuKey" class="pl-12 py-1 bg-gray-800">
+                                        <template v-for="(subItem, subKey) in menuItem.submenu" :key="subKey">
+                                            <Link v-if="subItem.route" :href="route(subItem.route)"
+                                                class="block py-2 text-sm text-gray-400 hover:text-white"
+                                                :class="{ 'text-white font-medium': isSubmenuItemActive(subItem.route) }">
+                                            {{ subItem.name }}
+                                            </Link>
+                                            <a v-else href="#"
+                                                class="block py-2 text-sm text-gray-400 hover:text-white">
+                                                {{ subItem.name }}
+                                            </a>
+                                        </template>
                                     </div>
-                                    <svg class="w-4 h-4 transition-transform duration-200"
-                                        :class="{ 'rotate-180': activeSubmenu === 'users' }" fill="none"
-                                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M19 9l-7 7-7-7">
-                                        </path>
-                                    </svg>
-                                </button>
-
-                                <!-- Submenu Items -->
-                                <div v-show="activeSubmenu === 'users'" class="pl-12 py-1 bg-gray-800">
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    All Users
-                                    </Link>
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    Add New
-                                    </Link>
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    Roles
-                                    </Link>
                                 </div>
-                            </div>
-
-                            <!-- Reports Menu with Submenu -->
-                            <div>
-                                <button @click="toggleSubmenu('reports')"
-                                    class="flex items-center justify-between w-full px-4 py-3 text-gray-300 hover:bg-gray-800 hover:text-white">
-                                    <div class="flex items-center">
-                                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-                                            xmlns="http://www.w3.org/2000/svg">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
-                                            </path>
-                                        </svg>
-                                        <span>Reports</span>
-                                    </div>
-                                    <svg class="w-4 h-4 transition-transform duration-200"
-                                        :class="{ 'rotate-180': activeSubmenu === 'reports' }" fill="none"
-                                        stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M19 9l-7 7-7-7">
-                                        </path>
-                                    </svg>
-                                </button>
-
-                                <!-- Submenu Items -->
-                                <div v-show="activeSubmenu === 'reports'" class="pl-12 py-1 bg-gray-800">
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    Sales Report
-                                    </Link>
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    User Activity
-                                    </Link>
-                                    <Link href="#" class="block py-2 text-sm text-gray-400 hover:text-white">
-                                    Analytics
-                                    </Link>
-                                </div>
-                            </div>
+                            </template>
 
                             <!-- Settings Link -->
                             <Link href="#"
@@ -307,7 +364,8 @@ onMounted(() => {
                                     d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
                                 </path>
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z">
+                                </path>
                             </svg>
                             <span>Settings</span>
                             </Link>
